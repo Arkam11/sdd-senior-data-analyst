@@ -1,0 +1,76 @@
+services:
+
+  oracle-db:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: sdd-oracle-db
+    shm_size: 1g
+    environment:
+      ORACLE_PASSWORD: SDD_Admin_2024
+      APP_USER: sdd_user
+      APP_USER_PASSWORD: SDD_User_2024
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 20s
+      retries: 15
+    networks:
+      - sdd-network
+
+  nifi:
+    image: apache/nifi:1.23.2
+    container_name: sdd-nifi
+    ports:
+      - "8443:8443"
+    environment:
+      - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      - SINGLE_USER_CREDENTIALS_PASSWORD=SDD_NiFi_2024!
+    volumes:
+      - nifi-data:/opt/nifi/nifi-current/data
+      - nifi-logs:/opt/nifi/nifi-current/logs
+    networks:
+      - sdd-network
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: sdd-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - sdd-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: sdd-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - sdd-network
+
+volumes:
+  oracle-data:
+  nifi-data:
+  nifi-logs:
+
+networks:
+  sdd-network:
+    driver: bridge
